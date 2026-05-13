@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtCore import QMimeData, Qt
-from PyQt6.QtGui import QAction, QColor, QPixmap, QTextCharFormat, QTextCursor
+from PyQt6.QtGui import QAction, QColor, QIcon, QPixmap, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
 
 from app.models import AppSettings, CardContext, CardRecord
 from app.services.card_repository import CardRepository
+from app.services.constant_service import load_constant_option_labels
 from app.services.html_service import HtmlService
 from app.services.image_indexer import ImageIndexer
 from app.services.setcode_service import SetcodeService
@@ -298,7 +299,81 @@ OPTION_LABELS = {
 }
 
 STRINGS = UI_STRINGS
-OPTION_LABELS = UI_OPTION_LABELS
+OPTION_LABELS = UI_OPTION_LABELS.copy()
+CONSTANT_OPTION_LABELS = load_constant_option_labels(Path(__file__).resolve().parent.parent / "data")
+for option_key, option_values in CONSTANT_OPTION_LABELS.items():
+    if option_values:
+        OPTION_LABELS[option_key] = option_values
+
+TYPE_FLAG_LABELS = OPTION_LABELS["type"]
+        
+LEGACY_TYPE_FLAG_LABELS = {
+    1: {"zh_TW": "怪獸", "en": "Monster"},
+    2: {"zh_TW": "魔法", "en": "Spell"},
+    4: {"zh_TW": "陷阱", "en": "Trap"},
+    16: {"zh_TW": "通常", "en": "Normal"},
+    32: {"zh_TW": "效果", "en": "Effect"},
+    64: {"zh_TW": "融合", "en": "Fusion"},
+    128: {"zh_TW": "儀式", "en": "Ritual"},
+    512: {"zh_TW": "靈魂", "en": "Spirit"},
+    1024: {"zh_TW": "聯合", "en": "Union"},
+    2048: {"zh_TW": "二重", "en": "Gemini"},
+    4096: {"zh_TW": "協調", "en": "Tuner"},
+    8192: {"zh_TW": "同步", "en": "Synchro"},
+    16384: {"zh_TW": "衍生物", "en": "Token"},
+    65536: {"zh_TW": "通常魔法/陷阱", "en": "Normal Spell/Trap"},
+    131072: {"zh_TW": "速攻魔法", "en": "Quick-Play"},
+    262144: {"zh_TW": "永續", "en": "Continuous"},
+    524288: {"zh_TW": "裝備/反擊", "en": "Equip/Counter"},
+    1048576: {"zh_TW": "場地", "en": "Field"},
+    2097152: {"zh_TW": "反轉", "en": "Flip"},
+    4194304: {"zh_TW": "卡通", "en": "Toon"},
+    8388608: {"zh_TW": "超量", "en": "Xyz"},
+    16777216: {"zh_TW": "靈擺", "en": "Pendulum"},
+    67108864: {"zh_TW": "連結", "en": "Link"},
+}
+
+CATEGORY_FLAG_LABELS = OPTION_LABELS["category"]
+
+LEGACY_CATEGORY_FLAG_LABELS = {
+    1: {"zh_TW": "破壞怪獸", "en": "Destroy Monster"},
+    2: {"zh_TW": "破壞魔陷", "en": "Destroy Spell/Trap"},
+    4: {"zh_TW": "回手/彈回", "en": "Bounce"},
+    8: {"zh_TW": "檢索", "en": "Search"},
+    16: {"zh_TW": "抽牌", "en": "Draw"},
+    32: {"zh_TW": "特殊召喚", "en": "Special Summon"},
+    64: {"zh_TW": "變更表示形式", "en": "Change Position"},
+    128: {"zh_TW": "控制權", "en": "Control"},
+    256: {"zh_TW": "墓地回收", "en": "Recycle Grave"},
+    512: {"zh_TW": "除外", "en": "Banish"},
+    1024: {"zh_TW": "加入手牌", "en": "To Hand"},
+    2048: {"zh_TW": "回到牌組", "en": "To Deck"},
+    4096: {"zh_TW": "送去墓地", "en": "Send to Grave"},
+    8192: {"zh_TW": "自壞", "en": "Self Destroy"},
+    16384: {"zh_TW": "無效", "en": "Negate"},
+    32768: {"zh_TW": "等級變更", "en": "Change Level"},
+    65536: {"zh_TW": "屬性變更", "en": "Change Attribute"},
+    131072: {"zh_TW": "種族變更", "en": "Change Race"},
+}
+
+FIELD_LABEL_OVERRIDES = {
+    "zh_TW": {
+        "field_id": "卡片密碼",
+        "field_type": "卡片類型",
+        "field_alias": "同名卡",
+        "field_level": "等級/階級",
+        "field_attribute": "屬性",
+        "field_category": "效果分類",
+    },
+    "en": {
+        "field_id": "Code",
+        "field_type": "Card type",
+        "field_alias": "Alias",
+        "field_level": "Level/Rank",
+        "field_attribute": "Attribute",
+        "field_category": "Category",
+    },
+}
 
 
 class HtmlPasteDialog(QDialog):
@@ -613,6 +688,50 @@ class ExtraTextsDialog(QDialog):
         return [editor.text().strip() for editor in self.editors]
 
 
+class BitmaskEditorDialog(QDialog):
+    def __init__(
+        self,
+        parent: QWidget | None,
+        title: str,
+        labels: dict[int, dict[str, str]],
+        language: str,
+        value: int,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(520, 520)
+        self.checkboxes: list[tuple[int, QCheckBox]] = []
+
+        root = QVBoxLayout(self)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(8)
+        for index, (flag, names) in enumerate(labels.items()):
+            checkbox = QCheckBox(f"{names.get(language) or names['en']} | {flag}")
+            checkbox.setChecked((value & flag) == flag)
+            self.checkboxes.append((flag, checkbox))
+            grid.addWidget(checkbox, index // 2, index % 2)
+        root.addLayout(grid)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        cancel_button = QPushButton("Cancel" if language == "en" else "取消")
+        apply_button = QPushButton("Apply" if language == "en" else "套用")
+        apply_button.setObjectName("primaryButton")
+        cancel_button.clicked.connect(self.reject)
+        apply_button.clicked.connect(self.accept)
+        button_row.addWidget(cancel_button)
+        button_row.addWidget(apply_button)
+        root.addLayout(button_row)
+
+    def value(self) -> int:
+        result = 0
+        for flag, checkbox in self.checkboxes:
+            if checkbox.isChecked():
+                result |= flag
+        return result
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -634,6 +753,7 @@ class MainWindow(QMainWindow):
         self.option_combos: dict[str, QComboBox] = {}
         self.field_labels: dict[str, QLabel] = {}
         self._setcode_search_results_cache: list[tuple[int, str]] = []
+        self._syncing_level_fields = False
 
         self._apply_initial_window_size()
         self._build_ui()
@@ -1037,18 +1157,13 @@ class MainWindow(QMainWindow):
         self.editor_title_label.setObjectName("sectionTitle")
         layout.addWidget(self.editor_title_label)
 
-        self.editor_helper_label = QLabel()
-        self.editor_helper_label.setObjectName("helperText")
-        self.editor_helper_label.setWordWrap(True)
-        layout.addWidget(self.editor_helper_label)
-
         self.edit_card_desc = QTextEdit()
-        self.edit_card_desc.setMinimumHeight(90)
+        self.edit_card_desc.setMinimumHeight(76)
         layout.addWidget(self.edit_card_desc)
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
-        grid.setVerticalSpacing(10)
+        grid.setVerticalSpacing(6)
 
         self.edit_card_id = QLineEdit()
         self.edit_card_name = QLineEdit()
@@ -1059,12 +1174,14 @@ class MainWindow(QMainWindow):
         self.edit_defense = QLineEdit()
         self.edit_card_id.textChanged.connect(self._update_script_path_label)
         self.edit_setcode.textChanged.connect(self._update_setcode_helper_label)
+        self.edit_level.textChanged.connect(self._sync_level_split_from_raw)
 
         self.edit_ot = self._create_option_combo("ot")
         self.edit_type_value = self._create_option_combo("type")
         self.edit_race = self._create_option_combo("race")
         self.edit_attribute = self._create_option_combo("attribute")
         self.edit_category = self._create_option_combo("category")
+        self.edit_category.currentTextChanged.connect(lambda _text: self._update_category_summary())
 
         self.field_widgets = {
             "field_id": self.edit_card_id,
@@ -1078,7 +1195,6 @@ class MainWindow(QMainWindow):
             "field_level": self.edit_level,
             "field_race": self.edit_race,
             "field_attribute": self.edit_attribute,
-            "field_category": self.edit_category,
         }
 
         ordered_fields = list(self.field_widgets.items())
@@ -1090,7 +1206,44 @@ class MainWindow(QMainWindow):
             grid.addWidget(label, row, column)
             grid.addWidget(widget, row, column + 1)
 
+        self.category_label = QLabel()
+        self.category_flags_button = QPushButton()
+        self.category_flags_button.clicked.connect(self._open_category_flags_dialog)
+        self.category_summary_label = QLabel("-")
+        self.category_summary_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        category_widget = QWidget()
+        category_layout = QHBoxLayout(category_widget)
+        category_layout.setContentsMargins(0, 0, 0, 0)
+        category_layout.setSpacing(6)
+        category_layout.addWidget(self.category_flags_button)
+        category_layout.addWidget(self.category_summary_label, 1)
+        category_row = len(ordered_fields) // 2
+        grid.addWidget(self.category_label, category_row, 2)
+        grid.addWidget(category_widget, category_row, 3)
+
         layout.addLayout(grid)
+
+        level_helper_row = QHBoxLayout()
+        self.level_helper_label = QLabel("Level")
+        self.level_main_edit = QLineEdit()
+        self.level_main_edit.setMaximumWidth(56)
+        self.level_lscale_label = QLabel("L")
+        self.level_lscale_edit = QLineEdit()
+        self.level_lscale_edit.setMaximumWidth(56)
+        self.level_rscale_label = QLabel("R")
+        self.level_rscale_edit = QLineEdit()
+        self.level_rscale_edit.setMaximumWidth(56)
+        self.level_main_edit.editingFinished.connect(self._sync_level_raw_from_split)
+        self.level_lscale_edit.editingFinished.connect(self._sync_level_raw_from_split)
+        self.level_rscale_edit.editingFinished.connect(self._sync_level_raw_from_split)
+        level_helper_row.addWidget(self.level_helper_label)
+        level_helper_row.addWidget(self.level_main_edit)
+        level_helper_row.addWidget(self.level_lscale_label)
+        level_helper_row.addWidget(self.level_lscale_edit)
+        level_helper_row.addWidget(self.level_rscale_label)
+        level_helper_row.addWidget(self.level_rscale_edit)
+        level_helper_row.addStretch(1)
+        layout.addLayout(level_helper_row)
 
         setcode_helper_row = QHBoxLayout()
         self.setcode_helper_title_label = QLabel()
@@ -1119,7 +1272,7 @@ class MainWindow(QMainWindow):
         self.setcode_helper_label = QLabel()
         self.setcode_helper_label.setObjectName("helperText")
         self.setcode_helper_label.setWordWrap(True)
-        layout.addWidget(self.setcode_helper_label)
+        self.setcode_helper_label.setVisible(False)
 
         search_apply_row = QHBoxLayout()
         self.extra_texts_button = QPushButton()
@@ -1243,7 +1396,6 @@ class MainWindow(QMainWindow):
         self.search_edit.setPlaceholderText(self.tr("search_placeholder"))
         self.copy_card_button.setText(self.tr("copy_card"))
         self.editor_title_label.setText(self.tr("cdb_editor"))
-        self.editor_helper_label.setText(self.tr("cdb_helper"))
         self.edit_card_desc.setPlaceholderText(self.tr("effect_placeholder"))
         self.setcode_helper_title_label.setText(self.tr("field_setcode_text"))
         self.setcode_helper_edit.setPlaceholderText(self.tr("setcode_helper_placeholder"))
@@ -1263,6 +1415,11 @@ class MainWindow(QMainWindow):
         self.open_script_workshop_button.setText(self.tr("open_script_workshop"))
         self.add_button.setText(self.tr("add_card"))
         self.delete_button.setText(self.tr("delete_card"))
+        self.category_label.setText(FIELD_LABEL_OVERRIDES.get(self.current_language, {}).get("field_category", self.tr("field_category")))
+        self.category_flags_button.setText("Edit" if self.current_language == "en" else "編輯")
+        self.level_helper_label.setText("Rank/Level" if self.current_language == "en" else "等級/階級")
+        self.level_lscale_label.setText("L Scale" if self.current_language == "en" else "左刻度")
+        self.level_rscale_label.setText("R Scale" if self.current_language == "en" else "右刻度")
 
         self.file_menu.setTitle(self.tr("menu_file"))
         self.edit_menu.setTitle(self.tr("menu_edit"))
@@ -1297,7 +1454,7 @@ class MainWindow(QMainWindow):
         self.html_editor.setPlaceholderText(self.tr("html_tools"))
 
         for key, label in self.field_labels.items():
-            label.setText(self.tr(key))
+            label.setText(FIELD_LABEL_OVERRIDES.get(self.current_language, {}).get(key, self.tr(key)))
 
         self._reload_option_combos()
         self._update_source_status_panel()
@@ -1549,8 +1706,22 @@ class MainWindow(QMainWindow):
     def _option_text(self, key: str, value: int) -> str:
         labels = OPTION_LABELS[key].get(value)
         if labels is None:
+            if key == "type":
+                return f"{self._describe_flags(TYPE_FLAG_LABELS, value)} | {value}"
+            if key == "category":
+                return f"{self._describe_flags(CATEGORY_FLAG_LABELS, value)} | {value}"
             return str(value)
         return f"{labels[self.current_language]} | {value}"
+
+    def _describe_flags(self, labels: dict[int, dict[str, str]], value: int) -> str:
+        if value == 0:
+            return "None" if self.current_language == "en" else "無"
+        names = [
+            label.get(self.current_language) or label["en"]
+            for flag, label in labels.items()
+            if value & flag
+        ]
+        return " + ".join(names) if names else str(value)
 
     def _set_combo_value(self, combo: QComboBox, value: int) -> None:
         combo.setEditText(self._option_text(self._combo_key(combo), value))
@@ -1567,6 +1738,32 @@ class MainWindow(QMainWindow):
             raise ValueError(self.tr("field_required", name=field_name))
         return int(raw.split("|", 1)[-1].strip() if "|" in raw else raw)
 
+    def _combo_int_or_zero(self, combo: QComboBox) -> int:
+        raw = combo.currentText().strip()
+        if not raw:
+            return 0
+        return int(raw.split("|", 1)[-1].strip() if "|" in raw else raw)
+
+    def _open_category_flags_dialog(self) -> None:
+        dialog = BitmaskEditorDialog(
+            self,
+            "Category Flags" if self.current_language == "en" else "category 多選",
+            CATEGORY_FLAG_LABELS,
+            self.current_language,
+            self._combo_int_or_zero(self.edit_category),
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._set_combo_value(self.edit_category, dialog.value())
+            self._update_category_summary()
+
+    def _update_category_summary(self) -> None:
+        try:
+            value = self._combo_int_or_zero(self.edit_category)
+        except ValueError:
+            self.category_summary_label.setText(self.edit_category.currentText().strip() or "-")
+            return
+        self.category_summary_label.setText(f"{self._describe_flags(CATEGORY_FLAG_LABELS, value)} | {value}")
+
     def _parse_setcode_helper_text(self, raw: str) -> int:
         return self.setcode_service.parse_input(raw)
 
@@ -1580,7 +1777,10 @@ class MainWindow(QMainWindow):
         chunks = self.setcode_service.split_chunks(setcode)
         if not chunks:
             return ""
-        return ", ".join(f"0x{chunk:04X}" for chunk in chunks)
+        return ", ".join(
+            self.setcode_service.get_label(chunk, self.current_language) or f"0x{chunk:04X}"
+            for chunk in chunks
+        )
 
     def _update_setcode_helper_label(self) -> None:
         try:
@@ -1631,7 +1831,10 @@ class MainWindow(QMainWindow):
         text = self.setcode_search_combo.currentText().strip()
         if "|" not in text:
             return
-        label = text.split("|", 1)[1].strip()
+        code = self.setcode_search_combo.currentData()
+        label = self.setcode_service.get_label(int(code), self.current_language) if code is not None else None
+        if not label:
+            label = text.split("|", 1)[1].strip()
         current = self.setcode_helper_edit.text().strip()
         self.setcode_helper_edit.setText(f"{current}, {label}" if current else label)
         self._sync_setcode_helper_to_numeric()
@@ -1656,6 +1859,38 @@ class MainWindow(QMainWindow):
             return
         self.edit_setcode.setText(str(setcode_value))
         self._update_setcode_helper_label()
+
+    def _sync_level_split_from_raw(self) -> None:
+        if self._syncing_level_fields:
+            return
+        self._syncing_level_fields = True
+        try:
+            raw_level = int(self.edit_level.text().strip() or "0")
+            level_value = raw_level & 0xFF
+            right_scale = (raw_level >> 16) & 0xFF
+            left_scale = (raw_level >> 24) & 0xFF
+            self.level_main_edit.setText(str(level_value))
+            self.level_lscale_edit.setText(str(left_scale))
+            self.level_rscale_edit.setText(str(right_scale))
+        except ValueError:
+            self.level_main_edit.clear()
+            self.level_lscale_edit.clear()
+            self.level_rscale_edit.clear()
+        finally:
+            self._syncing_level_fields = False
+
+    def _sync_level_raw_from_split(self) -> None:
+        if self._syncing_level_fields:
+            return
+        self._syncing_level_fields = True
+        try:
+            level_value = int(self.level_main_edit.text().strip() or "0") & 0xFF
+            left_scale = int(self.level_lscale_edit.text().strip() or "0") & 0xFF
+            right_scale = int(self.level_rscale_edit.text().strip() or "0") & 0xFF
+            raw_level = level_value | (right_scale << 16) | (left_scale << 24)
+            self.edit_level.setText(str(raw_level))
+        finally:
+            self._syncing_level_fields = False
 
     def _script_path_for_card_id(self, card_id: int) -> Path | None:
         cdb_path = self.settings.cdb_path.strip()
@@ -1700,6 +1935,8 @@ class MainWindow(QMainWindow):
         self._set_combo_value(self.edit_race, card.race)
         self._set_combo_value(self.edit_attribute, card.attribute)
         self._set_combo_value(self.edit_category, card.category)
+        self._update_category_summary()
+        self._sync_level_split_from_raw()
         extra_texts = (card.extra_texts + [""] * 16)[:16]
         for index, editor in enumerate(self.extra_text_editors):
             editor.setText(extra_texts[index])
@@ -1714,8 +1951,12 @@ class MainWindow(QMainWindow):
         self.setcode_helper_label.clear()
         for combo in self.option_combos.values():
             combo.setEditText("")
+        self.category_summary_label.setText("-")
         for editor in self.extra_text_editors:
             editor.clear()
+        self.level_main_edit.clear()
+        self.level_lscale_edit.clear()
+        self.level_rscale_edit.clear()
 
     def _load_selected_card_into_editor(self) -> None:
         card = self._get_selected_card()
@@ -1906,6 +2147,12 @@ class MainWindow(QMainWindow):
 
 def run() -> None:
     app = QApplication(sys.argv)
+    base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    icon_path = base_path / "icon.ico"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     window = MainWindow()
+    if icon_path.exists():
+        window.setWindowIcon(QIcon(str(icon_path)))
     window.show()
     sys.exit(app.exec())

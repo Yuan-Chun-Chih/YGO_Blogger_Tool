@@ -48,24 +48,22 @@ $message
 }
 
 function New-IconFromJpg($SourceJpg, $TargetIco) {
-    Add-Type -AssemblyName System.Drawing
+    $script = @'
+import sys
+from pathlib import Path
+from PIL import Image
 
-    $bitmap = [System.Drawing.Bitmap]::new($SourceJpg)
-    try {
-        $icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
-        try {
-            $stream = [System.IO.File]::Open($TargetIco, [System.IO.FileMode]::Create)
-            try {
-                $icon.Save($stream)
-            } finally {
-                $stream.Dispose()
-            }
-        } finally {
-            $icon.Dispose()
-        }
-    } finally {
-        $bitmap.Dispose()
-    }
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+
+image = Image.open(source).convert("RGBA")
+image.save(
+    target,
+    format="ICO",
+    sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+)
+'@
+    & $Python -c $script $SourceJpg $TargetIco
 }
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -124,6 +122,7 @@ $PyInstallerArgs = @(
     "--onefile",
     "--name", $OutputName,
     "--icon", $IconIco,
+    "--add-data", "$IconIco;.",
     "--version-file", $VersionFile
 )
 

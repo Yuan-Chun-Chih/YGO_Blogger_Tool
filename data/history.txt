@@ -1,5 +1,0 @@
-# database history
-C:\Users\kdsam\Desktop\DataEditorX-master\cards.cdb
-C:\Users\kdsam\Downloads\DH_pre-release.cdb
-# script history
-C:\Users\kdsam\Desktop\DataEditorX-master\script\c132308.lua

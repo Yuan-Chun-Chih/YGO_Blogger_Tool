@@ -79,10 +79,10 @@ class SetcodeService:
         normalized = raw.strip()
         if not normalized:
             return 0
-        if "," not in normalized and " " not in normalized:
+        if "," not in normalized:
             return self._parse_token(normalized)
 
-        parts = [part.strip() for part in normalized.replace(" ", ",").split(",") if part.strip()]
+        parts = [part.strip() for part in normalized.split(",") if part.strip()]
         if not parts:
             return 0
 
