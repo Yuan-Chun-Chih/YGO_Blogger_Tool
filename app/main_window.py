@@ -85,8 +85,8 @@ class MainWindow(QMainWindow):
 
     def _default_settings(self) -> AppSettings:
         return AppSettings(
-            cdb_path=str(self.project_root / "cards.cdb"),
-            pics_path=str(self.project_root / "pics"),
+            cdb_path="",
+            pics_path="",
             template_path="",
             output_path=str(self.project_root / "output.html"),
         )
@@ -98,6 +98,8 @@ class MainWindow(QMainWindow):
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(14, 14, 14, 14)
         root_layout.setSpacing(12)
+
+        root_layout.addWidget(self._build_source_status_panel())
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
@@ -132,6 +134,29 @@ class MainWindow(QMainWindow):
                 color: #2859c5;
                 font-size: 15px;
                 font-weight: 700;
+                background: transparent;
+            }
+            #sourceStatusValueReady {
+                color: #38761d;
+                font-size: 13px;
+                font-weight: 700;
+                background: #edf7e8;
+                border: 1px solid #cfe3c4;
+                border-radius: 999px;
+                padding: 3px 10px;
+            }
+            #sourceStatusValueMissing {
+                color: #990000;
+                font-size: 13px;
+                font-weight: 700;
+                background: #fdecec;
+                border: 1px solid #f3caca;
+                border-radius: 999px;
+                padding: 3px 10px;
+            }
+            #sourceStatusPath {
+                color: #5c6676;
+                font-size: 12px;
                 background: transparent;
             }
             #cardMetaName {
@@ -222,6 +247,41 @@ class MainWindow(QMainWindow):
             }
             """
         )
+
+    def _build_source_status_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setObjectName("panelCard")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+
+        title = QLabel("資料來源狀態")
+        title.setObjectName("sectionTitle")
+        layout.addWidget(title)
+
+        cdb_row = QHBoxLayout()
+        cdb_row.setSpacing(8)
+        cdb_row.addWidget(QLabel("cards.cdb"))
+        self.cdb_status_label = QLabel()
+        cdb_row.addWidget(self.cdb_status_label)
+        self.cdb_path_label = QLabel()
+        self.cdb_path_label.setObjectName("sourceStatusPath")
+        self.cdb_path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        cdb_row.addWidget(self.cdb_path_label, 1)
+        layout.addLayout(cdb_row)
+
+        pics_row = QHBoxLayout()
+        pics_row.setSpacing(8)
+        pics_row.addWidget(QLabel("pics/"))
+        self.pics_status_label = QLabel()
+        pics_row.addWidget(self.pics_status_label)
+        self.pics_path_label = QLabel()
+        self.pics_path_label.setObjectName("sourceStatusPath")
+        self.pics_path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        pics_row.addWidget(self.pics_path_label, 1)
+        layout.addLayout(pics_row)
+
+        return panel
 
     def _build_search_panel(self) -> QWidget:
         panel = QFrame()
@@ -386,14 +446,52 @@ class MainWindow(QMainWindow):
         loaded = self.settings_service.load()
         defaults = self._default_settings()
         self.settings = AppSettings(
-            cdb_path=loaded.cdb_path or defaults.cdb_path,
-            pics_path=loaded.pics_path or defaults.pics_path,
+            cdb_path=loaded.cdb_path if loaded.cdb_path and Path(loaded.cdb_path).exists() else defaults.cdb_path,
+            pics_path=loaded.pics_path if loaded.pics_path and Path(loaded.pics_path).exists() else defaults.pics_path,
             template_path="",
             output_path=loaded.output_path or defaults.output_path,
         )
 
     def _save_settings(self) -> None:
         self.settings_service.save(self.settings)
+
+    def _set_source_status(
+        self,
+        status_label: QLabel,
+        path_label: QLabel,
+        is_ready: bool,
+        ready_text: str,
+        missing_text: str,
+        path_value: str,
+    ) -> None:
+        status_label.setText(ready_text if is_ready else missing_text)
+        status_label.setObjectName("sourceStatusValueReady" if is_ready else "sourceStatusValueMissing")
+        status_label.style().unpolish(status_label)
+        status_label.style().polish(status_label)
+        path_label.setText(path_value if path_value else "未選擇")
+
+    def _update_source_status_panel(self) -> None:
+        cdb_path = self.settings.cdb_path.strip()
+        pics_path = self.settings.pics_path.strip()
+        has_cdb = bool(cdb_path and Path(cdb_path).exists())
+        has_pics = bool(pics_path and Path(pics_path).exists())
+
+        self._set_source_status(
+            self.cdb_status_label,
+            self.cdb_path_label,
+            has_cdb,
+            "已選擇",
+            "未選擇",
+            cdb_path,
+        )
+        self._set_source_status(
+            self.pics_status_label,
+            self.pics_path_label,
+            has_pics,
+            "已選擇",
+            "未選擇",
+            pics_path,
+        )
 
     def _pick_cdb(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(
@@ -419,17 +517,35 @@ class MainWindow(QMainWindow):
             self.reload_all_sources()
 
     def reload_all_sources(self) -> None:
+        cdb_path = self.settings.cdb_path.strip()
+        pics_path = self.settings.pics_path.strip()
+        self._update_source_status_panel()
+
+        if not cdb_path or not Path(cdb_path).exists():
+            self.card_repository = None
+            self.image_indexer = None
+            self._show_no_data_state()
+            self.statusBar().showMessage("尚未選擇 cards.cdb。", 5000)
+            return
+
         try:
-            self.card_repository = CardRepository(self.settings.cdb_path)
+            self.card_repository = CardRepository(cdb_path)
             self.card_repository.load()
-            self.image_indexer = ImageIndexer(self.settings.pics_path)
-            self.image_indexer.build()
+
+            if pics_path and Path(pics_path).exists():
+                self.image_indexer = ImageIndexer(pics_path)
+                self.image_indexer.build()
+            else:
+                self.image_indexer = None
+
             self._refresh_card_list()
+            self._update_source_status_panel()
             self.statusBar().showMessage("資料來源已重新載入。", 5000)
         except Exception as exc:
             self.card_repository = None
             self.image_indexer = None
             self._show_no_data_state()
+            self._update_source_status_panel()
             QMessageBox.critical(self, "載入失敗", str(exc))
 
     def import_html_draft(self) -> None:

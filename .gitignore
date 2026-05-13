@@ -12,3 +12,7 @@ dist/
 settings.json
 .idea/
 .vscode/
+HTML_template/
+cards.cdb
+文章結構.md
+發佈流程清單.md
