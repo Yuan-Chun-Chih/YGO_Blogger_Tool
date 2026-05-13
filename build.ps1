@@ -4,7 +4,8 @@ param(
     [switch]$Sign,
     [string]$SignToolPath = "signtool.exe",
     [string]$TimestampUrl = "http://timestamp.digicert.com",
-    [string]$OutputName = "YGOPRO_Blogger_Tool"
+    [string]$OutputName = "YGOPRO_Blogger_Tool",
+    [string]$PackageVersion = "0.1.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,6 +79,7 @@ $VersionFile = Join-Path $ProjectRoot "version_info.txt"
 $DistDir = Join-Path $ProjectRoot "dist"
 $BuildDir = Join-Path $ProjectRoot "build"
 $ExePath = Join-Path $DistDir "$OutputName.exe"
+$ZipPath = Join-Path $DistDir "${OutputName}_v${PackageVersion}.zip"
 
 Ensure-FileExists $Python "Missing virtualenv python: $Python"
 Ensure-FileExists $Requirements "Missing requirements file: $Requirements"
@@ -163,7 +165,16 @@ if ($Sign) {
     Write-Host "Use .\build.ps1 -Sign when you are ready to sign the exe." -ForegroundColor Yellow
 }
 
+Step "Create release zip"
+if (Test-Path $ZipPath) {
+    Remove-Item -LiteralPath $ZipPath -Force
+}
+Compress-Archive -LiteralPath $ExePath -DestinationPath $ZipPath -CompressionLevel Optimal
+Ensure-FileExists $ZipPath "Failed to create release zip: $ZipPath"
+Write-Host "Zip file: $ZipPath" -ForegroundColor Green
+
 Step "Recommended validation"
 Write-Host "1. Launch dist\$OutputName.exe directly" -ForegroundColor White
-Write-Host "2. Test on another Windows device without Python installed" -ForegroundColor White
-Write-Host "3. Test card search, Word paste, and HTML export" -ForegroundColor White
+Write-Host "2. Extract and launch $OutputName.exe from ${OutputName}_v${PackageVersion}.zip" -ForegroundColor White
+Write-Host "3. Test on another Windows device without Python installed" -ForegroundColor White
+Write-Host "4. Test card search, Word paste, and HTML export" -ForegroundColor White

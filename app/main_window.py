@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("YGOPRO Blogger Tool")
-        self.resize(1560, 980)
+        self._apply_initial_window_size()
 
         self.project_root = Path(__file__).resolve().parent.parent
         self.settings_service = SettingsService(self.project_root / "settings.json")
@@ -82,6 +82,17 @@ class MainWindow(QMainWindow):
         self._build_menu()
         self._load_settings()
         self.reload_all_sources()
+
+    def _apply_initial_window_size(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            self.resize(1320, 760)
+            return
+
+        available = screen.availableGeometry()
+        width = min(1400, max(1160, available.width() - 90))
+        height = min(820, max(700, available.height() - 140))
+        self.resize(width, height)
 
     def _default_settings(self) -> AppSettings:
         return AppSettings(
@@ -605,7 +616,7 @@ class MainWindow(QMainWindow):
             self.effect_preview.clear()
             return
 
-        self.card_name_label.setText(card.name)
+        self.card_name_label.setText(self.html_service.format_card_name(card.name))
         self.card_image_id_label.setText(str(card.card_id))
         self.effect_preview.setPlainText(card.desc)
 

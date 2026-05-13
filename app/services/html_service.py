@@ -27,13 +27,27 @@ class HtmlService:
         posix_path = path.resolve().as_posix()
         return f"file:///{quote(posix_path)}"
 
+    def format_card_name(self, name: str) -> str:
+        normalized = name.strip()
+        if normalized.startswith("《") and normalized.endswith("》"):
+            return normalized
+        return f"《{normalized}》"
+
     def build_card_html_fragment(self, context: CardContext) -> str:
         image_src = self.resolve_editor_image_value(context)
-        return self._build_card_fragment(image_src, context.card.name, context.card.desc)
+        return self._build_card_fragment(
+            image_src,
+            self.format_card_name(context.card.name),
+            context.card.desc,
+        )
 
     def build_card_clipboard_fragment(self, context: CardContext) -> str:
         image_src = self.resolve_clipboard_image_value(context)
-        return self._build_card_fragment(image_src, context.card.name, context.card.desc)
+        return self._build_card_fragment(
+            image_src,
+            self.format_card_name(context.card.name),
+            context.card.desc,
+        )
 
     def _build_card_fragment(self, image_src: str, card_name: str, card_desc: str) -> str:
         name = html.escape(card_name)
@@ -59,7 +73,7 @@ class HtmlService:
         )
 
     def build_card_plaintext_fragment(self, context: CardContext) -> str:
-        return f"{context.card.name.strip()}\n{context.card.desc.strip()}".strip()
+        return f"{self.format_card_name(context.card.name)}\n{context.card.desc.strip()}".strip()
 
     def build_clipboard_html_document(self, fragment: str) -> str:
         return (
