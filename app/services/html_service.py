@@ -17,11 +17,7 @@ class HtmlService:
         "#3367d6",
         "#38761d",
     ]
-    PRESET_FONT_SIZES = [
-        ("標題", 18.0),
-        ("小標題", 14.0),
-        ("一般", 12.0),
-    ]
+    PRESET_FONT_SIZES = [18.0, 14.0, 12.0]
 
     def path_to_file_uri(self, path: Path) -> str:
         posix_path = path.resolve().as_posix()
