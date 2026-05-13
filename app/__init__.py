@@ -1,0 +1,1 @@
+"""YGOPRO Blogger Tool MVP."""
