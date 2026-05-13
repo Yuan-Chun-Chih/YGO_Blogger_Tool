@@ -99,7 +99,8 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(14, 14, 14, 14)
         root_layout.setSpacing(12)
 
-        root_layout.addWidget(self._build_source_status_panel())
+        self.source_status_panel = self._build_source_status_panel()
+        root_layout.addWidget(self.source_status_panel)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
@@ -492,6 +493,8 @@ class MainWindow(QMainWindow):
             "未選擇",
             pics_path,
         )
+
+        self.source_status_panel.setVisible(not (has_cdb and has_pics))
 
     def _pick_cdb(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(
