@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from PyQt6.QtCore import QMimeData, Qt
@@ -376,6 +377,23 @@ FIELD_LABEL_OVERRIDES = {
 }
 
 
+COMPARE_FIELD_DEFINITIONS: list[tuple[str, str, str]] = [
+    ("name", "卡名", "Name"),
+    ("desc", "效果文", "Description"),
+    ("ot", "發行範圍", "OT"),
+    ("alias", "同名卡", "Alias"),
+    ("setcode", "系列", "Series"),
+    ("type_value", "卡片類型", "Type"),
+    ("atk", "攻擊力", "ATK"),
+    ("defense", "守備力", "DEF"),
+    ("level", "等級/階級/刻度", "Level/Rank/Scale"),
+    ("race", "種族", "Race"),
+    ("attribute", "屬性", "Attribute"),
+    ("category", "效果分類", "Category"),
+    ("extra_texts", "texts 擴充", "Extra texts"),
+]
+
+
 class HtmlPasteDialog(QDialog):
     def __init__(self, parent: QWidget | None = None, strings: dict[str, str] | None = None) -> None:
         super().__init__(parent)
@@ -429,6 +447,7 @@ class SecondaryCompareDialog(QDialog):
         self._selected_card: CardRecord | None = None
         self.batch_backup_path: Path | None = None
         self.batch_overwrite_count = 0
+        self.field_items: dict[str, QListWidgetItem] = {}
 
         self.setWindowTitle(strings["compare_window_title"])
         self.resize(1120, 760)
@@ -470,6 +489,11 @@ class SecondaryCompareDialog(QDialog):
         compare_layout.addWidget(self.current_card_view, 1)
         compare_layout.addWidget(self.selected_card_label)
         compare_layout.addWidget(self.selected_card_view, 1)
+        self.field_diff_label = QLabel(self._text("compare_field_diff", "逐欄位差異 / 勾選後可部分覆蓋"))
+        self.field_diff_list = QListWidget()
+        self.field_diff_list.setMinimumHeight(150)
+        compare_layout.addWidget(self.field_diff_label)
+        compare_layout.addWidget(self.field_diff_list, 1)
         content.addWidget(compare_panel)
         content.setSizes([360, 760])
         root.addWidget(content, 1)
@@ -480,11 +504,19 @@ class SecondaryCompareDialog(QDialog):
         self.apply_button = QPushButton(strings["compare_load_to_editor"])
         self.overwrite_selected_button = QPushButton(self._text("compare_overwrite_selected", "覆蓋選取"))
         self.overwrite_filtered_button = QPushButton(self._text("compare_overwrite_filtered", "覆蓋篩選結果"))
+        self.overwrite_fields_button = QPushButton(self._text("compare_overwrite_fields", "覆蓋此卡勾選欄位"))
+        self.overwrite_filtered_fields_button = QPushButton(
+            self._text("compare_overwrite_filtered_fields", "批次覆蓋勾選欄位")
+        )
         self.apply_button.setObjectName("primaryButton")
         self.cancel_button.clicked.connect(self.reject)
         self.apply_button.clicked.connect(self.accept)
         self.overwrite_selected_button.clicked.connect(self._overwrite_selected)
         self.overwrite_filtered_button.clicked.connect(self._overwrite_filtered)
+        self.overwrite_fields_button.clicked.connect(self._overwrite_current_fields)
+        self.overwrite_filtered_fields_button.clicked.connect(self._overwrite_filtered_fields)
+        button_row.addWidget(self.overwrite_fields_button)
+        button_row.addWidget(self.overwrite_filtered_fields_button)
         button_row.addWidget(self.overwrite_selected_button)
         button_row.addWidget(self.overwrite_filtered_button)
         button_row.addWidget(self.cancel_button)
@@ -542,10 +574,74 @@ class SecondaryCompareDialog(QDialog):
         if index < 0 or index >= len(self.diff_rows):
             self._selected_card = None
             self.selected_card_view.clear()
+            self.field_diff_list.clear()
             return
         _status, self._selected_card, primary_card = self.diff_rows[index]
         self.current_card_view.setPlainText(self._format_card_text(primary_card))
         self.selected_card_view.setPlainText(self._format_card_text(self._selected_card))
+        self._update_field_diff(primary_card, self._selected_card)
+
+    def _field_label(self, key: str) -> str:
+        for field_key, zh_label, _en_label in COMPARE_FIELD_DEFINITIONS:
+            if field_key == key:
+                return zh_label
+        return key
+
+    def _format_field_value(self, value: object) -> str:
+        if isinstance(value, list):
+            return " | ".join(str(item) for item in value if str(item).strip())
+        return str(value)
+
+    def _update_field_diff(self, primary_card: CardRecord | None, secondary_card: CardRecord | None) -> None:
+        self.field_diff_list.clear()
+        self.field_items.clear()
+        if secondary_card is None:
+            return
+        for key, _zh_label, _en_label in COMPARE_FIELD_DEFINITIONS:
+            secondary_value = getattr(secondary_card, key)
+            primary_value = getattr(primary_card, key) if primary_card is not None else None
+            changed = primary_value != secondary_value
+            prefix = "!=" if changed else "="
+            item = QListWidgetItem(
+                f"{prefix} {self._field_label(key)}: "
+                f"{self._format_field_value(primary_value) if primary_card is not None else '-'}"
+                f"  ->  {self._format_field_value(secondary_value)}"
+            )
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if changed else Qt.CheckState.Unchecked)
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            self.field_diff_list.addItem(item)
+            self.field_items[key] = item
+
+    def _checked_field_keys(self) -> list[str]:
+        keys: list[str] = []
+        for index in range(self.field_diff_list.count()):
+            item = self.field_diff_list.item(index)
+            if item.checkState() == Qt.CheckState.Checked:
+                keys.append(str(item.data(Qt.ItemDataRole.UserRole)))
+        return keys
+
+    def _merge_card_fields(
+        self,
+        primary_card: CardRecord | None,
+        secondary_card: CardRecord,
+        field_keys: list[str],
+    ) -> CardRecord:
+        if primary_card is None:
+            return secondary_card
+        updates = {key: getattr(secondary_card, key) for key in field_keys}
+        if "extra_texts" in updates:
+            updates["extra_texts"] = list(secondary_card.extra_texts)
+        return replace(primary_card, **updates)
+
+    def _overwrite_field_values(self, cards: list[CardRecord], field_keys: list[str]) -> None:
+        if not cards or not field_keys:
+            return
+        merged_cards: list[CardRecord] = []
+        for secondary_card in cards:
+            primary_card = self.primary_repository.get_card_by_id(secondary_card.card_id)
+            merged_cards.append(self._merge_card_fields(primary_card, secondary_card, field_keys))
+        self._overwrite_cards(merged_cards)
 
     def _format_card_text(self, card: CardRecord | None) -> str:
         if card is None:
@@ -599,6 +695,17 @@ class SecondaryCompareDialog(QDialog):
     def _overwrite_filtered(self) -> None:
         self._overwrite_cards([card for _status, card, _primary_card in self.diff_rows])
 
+    def _overwrite_current_fields(self) -> None:
+        if self._selected_card is None:
+            return
+        self._overwrite_field_values([self._selected_card], self._checked_field_keys())
+
+    def _overwrite_filtered_fields(self) -> None:
+        self._overwrite_field_values(
+            [card for _status, card, _primary_card in self.diff_rows],
+            self._checked_field_keys(),
+        )
+
 
 class ScriptWorkshopDialog(QDialog):
     def __init__(self, parent: QWidget | None, strings: dict[str, str], script_path: Path, template_path: Path) -> None:
@@ -606,20 +713,54 @@ class ScriptWorkshopDialog(QDialog):
         self.strings = strings
         self.script_path = script_path
         self.template_path = template_path
+        self.data_dir = template_path.parent
+        self.help_entries: list[tuple[str, str, str]] = []
 
-        self.setWindowTitle(strings["open_script_workshop"])
+        self.setWindowTitle(self._text("open_script_workshop", "Lua 腳本工作台"))
         self.resize(1100, 780)
 
         root = QVBoxLayout(self)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         self.editor = QTextEdit()
-        self.editor.setPlaceholderText(strings["script_placeholder"])
-        root.addWidget(self.editor, 1)
+        self.editor.setAcceptRichText(False)
+        self.editor.setPlaceholderText(self._text("script_placeholder", "在這裡編輯 c{id}.lua 腳本"))
+        splitter.addWidget(self.editor)
+
+        helper_panel = QWidget()
+        helper_layout = QVBoxLayout(helper_panel)
+        helper_layout.setContentsMargins(0, 0, 0, 0)
+        helper_layout.setSpacing(8)
+        helper_layout.addWidget(QLabel(self._text("lua_help", "Lua 說明搜尋")))
+        self.help_search_edit = QLineEdit()
+        self.help_search_edit.setPlaceholderText(self._text("lua_help_search", "搜尋函式、常數、範例"))
+        self.help_search_edit.textChanged.connect(self._refresh_help_results)
+        helper_layout.addWidget(self.help_search_edit)
+        self.help_source_combo = QComboBox()
+        self.help_source_combo.addItem(self._text("all", "全部"), "all")
+        self.help_source_combo.addItem("Functions", "function")
+        self.help_source_combo.addItem("Scripts", "script")
+        self.help_source_combo.addItem("Constants", "constant")
+        self.help_source_combo.currentIndexChanged.connect(self._refresh_help_results)
+        helper_layout.addWidget(self.help_source_combo)
+        self.help_results = QListWidget()
+        self.help_results.currentRowChanged.connect(self._update_help_preview)
+        helper_layout.addWidget(self.help_results, 1)
+        self.help_preview = QTextEdit()
+        self.help_preview.setReadOnly(True)
+        self.help_preview.setMinimumHeight(180)
+        helper_layout.addWidget(self.help_preview, 1)
+        self.insert_help_button = QPushButton(self._text("insert_to_script", "插入到游標位置"))
+        self.insert_help_button.clicked.connect(self._insert_help_snippet)
+        helper_layout.addWidget(self.insert_help_button)
+        splitter.addWidget(helper_panel)
+        splitter.setSizes([760, 340])
+        root.addWidget(splitter, 1)
 
         button_row = QHBoxLayout()
-        self.reload_button = QPushButton(strings["reload_script"])
-        self.template_button = QPushButton(strings["load_single_template"])
-        self.save_button = QPushButton(strings["save_script"])
-        self.close_button = QPushButton(strings["close"])
+        self.reload_button = QPushButton(self._text("reload_script", "重新載入"))
+        self.template_button = QPushButton(self._text("load_single_template", "載入 single.lua 範本"))
+        self.save_button = QPushButton(self._text("save_script", "儲存腳本"))
+        self.close_button = QPushButton(self._text("close", "關閉"))
         self.save_button.setObjectName("primaryButton")
         self.reload_button.clicked.connect(self.reload_script)
         self.template_button.clicked.connect(self.load_template)
@@ -632,7 +773,89 @@ class ScriptWorkshopDialog(QDialog):
         button_row.addWidget(self.close_button)
         root.addLayout(button_row)
 
+        self._load_help_entries()
         self.reload_script()
+        self._refresh_help_results()
+
+    def _text(self, key: str, fallback: str) -> str:
+        return self.strings.get(key, fallback)
+
+    def _read_help_file(self, filename: str) -> str:
+        path = self.data_dir / filename
+        if not path.exists():
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace")
+
+    def _split_help_blocks(self, source: str, text: str) -> list[tuple[str, str, str]]:
+        blocks: list[tuple[str, str, str]] = []
+        current_title = source
+        current_lines: list[str] = []
+        for raw_line in text.splitlines():
+            line = raw_line.rstrip()
+            is_title = line.startswith("##") or line.startswith("-- ") or (
+                source == "constant" and line.startswith("#")
+            )
+            if is_title and current_lines:
+                blocks.append((source, current_title.strip("#- ") or source, "\n".join(current_lines).strip()))
+                current_lines = []
+            if is_title:
+                current_title = line.strip("#- ") or source
+            current_lines.append(line)
+        if current_lines:
+            blocks.append((source, current_title.strip("#- ") or source, "\n".join(current_lines).strip()))
+        return [block for block in blocks if block[2]]
+
+    def _load_help_entries(self) -> None:
+        self.help_entries = []
+        self.help_entries.extend(self._split_help_blocks("function", self._read_help_file("_function_english.txt")))
+        self.help_entries.extend(self._split_help_blocks("function", self._read_help_file("_functions.txt")))
+        self.help_entries.extend(self._split_help_blocks("script", self._read_help_file("_scripts_english.txt")))
+        self.help_entries.extend(self._split_help_blocks("script", self._read_help_file("_script.txt")))
+        self.help_entries.extend(self._split_help_blocks("constant", self._read_help_file("constant.lua")))
+
+    def _refresh_help_results(self) -> None:
+        keyword = self.help_search_edit.text().strip().lower()
+        source_filter = self.help_source_combo.currentData() or "all"
+        self.help_results.clear()
+        count = 0
+        for index, (source, title, body) in enumerate(self.help_entries):
+            if source_filter != "all" and source != source_filter:
+                continue
+            haystack = f"{title}\n{body}".lower()
+            if keyword and keyword not in haystack:
+                continue
+            item = QListWidgetItem(f"[{source}] {title}")
+            item.setData(Qt.ItemDataRole.UserRole, index)
+            self.help_results.addItem(item)
+            count += 1
+            if count >= 300:
+                break
+        if self.help_results.count():
+            self.help_results.setCurrentRow(0)
+        else:
+            self.help_preview.clear()
+
+    def _current_help_entry(self) -> tuple[str, str, str] | None:
+        item = self.help_results.currentItem()
+        if item is None:
+            return None
+        index = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(index, int) and 0 <= index < len(self.help_entries):
+            return self.help_entries[index]
+        return None
+
+    def _update_help_preview(self, _row: int) -> None:
+        entry = self._current_help_entry()
+        self.help_preview.setPlainText(entry[2] if entry else "")
+
+    def _insert_help_snippet(self) -> None:
+        entry = self._current_help_entry()
+        if entry is None:
+            return
+        _source, _title, body = entry
+        cursor = self.editor.textCursor()
+        cursor.insertText(body + "\n")
+        self.editor.setTextCursor(cursor)
 
     def reload_script(self) -> None:
         if self.script_path.exists():
